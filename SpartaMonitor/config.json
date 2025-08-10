@@ -1,0 +1,5 @@
+{
+  "theme": "darkly",
+  "temp_threshold": 85,
+  "refresh_rate": 1000
+}
