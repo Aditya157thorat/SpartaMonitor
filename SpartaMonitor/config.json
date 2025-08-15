@@ -1,5 +1,9 @@
 {
   "theme": "darkly",
   "temp_threshold": 85,
-  "refresh_rate": 1000
+  "refresh_rate": 1000,
+  "heavy_cpu_threshold": 85,
+  "heavy_cpu_ticks": 8,
+  "window_size": "900x700",
+  "sidebar_width": 220
 }

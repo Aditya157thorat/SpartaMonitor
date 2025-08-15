@@ -1,0 +1,4 @@
+psutil==7.0.0
+ttkbootstrap==1.14.2
+Pillow==10.4.0
+GPUtil; sys_platform == 'win32' or sys_platform == 'linux'
