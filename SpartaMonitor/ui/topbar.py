@@ -1,51 +1,101 @@
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+import time
+import tkinter as tk
+from tkinter import ttk
 
-print("[debug] loading topbar.py")
+from utils.formatting import format_duration
+from utils.theme import COLORS
 
-def fmt_uptime(sec: int) -> str:
-    d = sec // 86400
-    h = (sec % 86400) // 3600
-    m = (sec % 3600) // 60
-    if d: return f"{d}d {h}h {m}m"
-    if h: return f"{h}h {m}m"
-    return f"{m}m"
 
 class TopBar:
-    def __init__(self, master):
-        self.frame = ttk.Frame(master, bootstyle=SECONDARY)
-        self.frame.configure(padding=(10, 6))
+    def __init__(self, root, on_toggle_sidebar):
+        self.root = root
+        self.on_toggle_sidebar = on_toggle_sidebar
 
-        # Left: sidebar toggle
-        self.toggle_btn = ttk.Button(self.frame, text="☰", width=3, bootstyle=(DARK, OUTLINE))
-        self.toggle_btn.pack(side="left")
-        self.on_toggle_sidebar = None
-        self.toggle_btn.configure(command=self._toggle_clicked)
+        self.frame = ttk.Frame(root, padding=(10, 8))
+        try:
+            self.frame.configure(style="Topbar.TFrame")
+        except Exception:
+            pass
 
-        # Right: battery + uptime + alert icon
-        self.battery_label = ttk.Label(self.frame, text="⚡ --%")
-        self.uptime_label = ttk.Label(self.frame, text="⏳ --m")
-        self.alert_label = ttk.Label(self.frame, text="")  # can show 🔔 on alerts
+        self._build()
 
-        self.alert_label.pack(side="right", padx=6)
-        self.uptime_label.pack(side="right", padx=6)
-        self.battery_label.pack(side="right", padx=6)
+    def _build(self):
+        self.frame.grid_columnconfigure(1, weight=1)
 
-    def _toggle_clicked(self):
-        if self.on_toggle_sidebar:
-            self.on_toggle_sidebar()
+        self.toggle = ttk.Button(self.frame, text="☰", width=3, command=self.on_toggle_sidebar)
+        self.toggle.grid(row=0, column=0, sticky="w")
 
-    def update_battery(self, batt):
-        if batt is None:
-            self.battery_label.configure(text="⚡ N/A")
-            return
-        plug = "🔌" if getattr(batt, "power_plugged", False) else "🔋"
-        pct = getattr(batt, "percent", None)
-        pct_text = "--" if pct is None else int(pct)
-        self.battery_label.configure(text=f"{plug} {pct_text}%")
+        self.title = ttk.Label(self.frame, text="SpartaMonitor", font=("Segoe UI", 12, "bold"))
+        self.title.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
-    def update_uptime(self, secs: int):
-        self.uptime_label.configure(text=f"⏳ {fmt_uptime(secs)}")
+        self.uptime_lbl = ttk.Label(self.frame, text="Uptime: —")
+        self.uptime_lbl.grid(row=0, column=2, sticky="e", padx=(0, 10))
 
-    def show_alert_icon(self, show: bool):
-        self.alert_label.configure(text="🔔" if show else "")
+        self.battery_lbl = ttk.Label(self.frame, text="Battery: —")
+        self.battery_lbl.grid(row=0, column=3, sticky="e", padx=(0, 10))
+
+        self.bell = ttk.Label(self.frame, text="🔔", foreground="#888")
+        self.bell.grid(row=0, column=4, sticky="e")
+
+        # style for topbar if supported
+        style = ttk.Style()
+        try:
+            style.configure("Topbar.TFrame", background=COLORS["bg_dark"])
+            style.configure("Topbar.TLabel", background=COLORS["bg_dark"], foreground="#ddd")
+            self.frame.configure(style="Topbar.TFrame")
+            for w in (self.title, self.uptime_lbl, self.battery_lbl, self.bell):
+                w.configure(style="Topbar.TLabel")
+        except Exception:
+            pass
+
+    def update_system(self, system_data: dict):
+        # Uptime
+        uptime_s = system_data.get("uptime_seconds")
+        if uptime_s is not None:
+            self.uptime_lbl.config(text=f"Uptime: {format_duration(uptime_s)}")
+
+        # Battery
+        batt = system_data.get("battery")
+        if batt and batt.get("percent") is not None:
+            pct = int(batt["percent"])
+            ac = "⚡" if batt.get("plugged") else ""
+            self.battery_lbl.config(text=f"Battery: {pct}% {ac}")
+        else:
+            self.battery_lbl.config(text="Battery: —")
+
+    def alert(self, level: str, message: str):
+        # flash bell and open toast window quickly
+        self._flash_bell()
+        self._toast(level.title(), message)
+
+    def _flash_bell(self):
+        def step(i=0):
+            if i >= 6:
+                self.bell.config(foreground="#888")
+                return
+            self.bell.config(foreground="#e03131" if i % 2 == 0 else "#f0c419")
+            self.root.after(200, lambda: step(i + 1))
+
+        step(0)
+
+    def _toast(self, title, message):
+        top = tk.Toplevel(self.root)
+        top.title(title)
+        top.attributes("-topmost", True)
+        top.resizable(False, False)
+        # Place near top-right of the root window
+        try:
+            x = self.root.winfo_x() + self.root.winfo_width() - 320
+            y = self.root.winfo_y() + 60
+            top.geometry(f"300x120+{x}+{y}")
+        except Exception:
+            top.geometry("300x120+80+80")
+
+        frm = ttk.Frame(top, padding=12)
+        frm.pack(fill="both", expand=True)
+
+        ttk.Label(frm, text=title, font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        ttk.Label(frm, text=message, wraplength=260).pack(anchor="w", pady=(6, 10))
+        ttk.Button(frm, text="Dismiss", command=top.destroy).pack(anchor="e")
+
+        top.after(5000, lambda: (top.winfo_exists() and top.destroy()))

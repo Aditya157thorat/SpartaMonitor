@@ -1,16 +1,22 @@
-def get_gpu_summary():
+def get_gpus():
     try:
         import GPUtil
-        gpus = GPUtil.getGPUs()
-        if not gpus:
-            return "GPU: N/A"
-        g = gpus[0]
-        name = getattr(g, "name", "GPU")
-        load = getattr(g, "load", 0) * 100
-        mem_used = getattr(g, "memoryUsed", 0)
-        mem_total = getattr(g, "memoryTotal", 0)
-        temp = getattr(g, "temperature", None)
-        temp_str = f" | Temp {temp:.0f}°C" if temp is not None else ""
-        return f"GPU: {name} | Load {load:.0f}% | Mem {mem_used:.0f}/{mem_total:.0f} MB{temp_str}"
     except Exception:
-        return "GPU: N/A"
+        return []
+
+    try:
+        gpus = GPUtil.getGPUs()
+    except Exception:
+        return []
+
+    result = []
+    for g in gpus:
+        result.append({
+            "id": g.id,
+            "name": g.name,
+            "load_percent": float(g.load) * 100.0 if g.load is not None else 0.0,
+            "mem_total_mb": int(g.memoryTotal),
+            "mem_used_mb": int(g.memoryUsed),
+            "temp_c": getattr(g, "temperature", None),
+        })
+    return result

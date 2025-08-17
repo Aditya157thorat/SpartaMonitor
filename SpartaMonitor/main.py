@@ -1,91 +1,101 @@
-# main.py
 import sys
+import time
 import traceback
-from pathlib import Path
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+import tkinter as tk
+from tkinter import ttk
 
-print("[debug] loading alerts.py")
-from alerts import Alerts
-from topbar import TopBar
-from sidebar import Sidebar
-from dashboard import Dashboard
-from utils.config_handler import load_config
+# Optional: ttkbootstrap
+try:
+    import ttkbootstrap as tb
+    from ttkbootstrap.constants import LEFT, RIGHT, TOP, BOTTOM, BOTH, X, Y
+    BOOTSTRAP_OK = True
+except Exception:
+    BOOTSTRAP_OK = False
+    LEFT, RIGHT, TOP, BOTTOM, BOTH, X, Y = "left", "right", "top", "bottom", "both", "x", "y"
+
+from ui.topbar import TopBar
+from ui.sidebar import Sidebar
+from ui.dashboard import Dashboard
 from utils.theme import COLORS
 
-CONFIG_PATH = Path(__file__).parent / "config.json"
 
-
-class SpartaMonitorApp:
+class App:
     def __init__(self):
-        print("Launching SpartaMonitor...")
+        if BOOTSTRAP_OK:
+            self.root = tb.Window(title="SpartaMonitor", themename="darkly")
+        else:
+            self.root = tk.Tk()
+            self.root.title("SpartaMonitor")
 
-        self.config = load_config(CONFIG_PATH)
-        self.app = ttk.Window(themename=self.config["theme"])
-        self.app.title("SpartaMonitor")
-        self.app.geometry(self.config.get("window_size", "800x800"))
-        self.app.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.root.geometry("1100x680")
+        self.root.minsize(900, 560)
+        try:
+            self.root.configure(bg=COLORS["bg_dark"])
+        except Exception:
+            pass
 
-        # Load background (optional)
-        self._load_background()
+        self._build_layout()
 
-        # UI Components
-        print("[main] Starting SpartaMonitorApp init")
-        self.topbar = TopBar(self.app)
-        self.topbar.frame.pack(fill=X)
-        print("[main] TopBar created")
-
-        self.sidebar = Sidebar(self.app, width=self.config.get("sidebar_width", 220), on_nav=self._on_nav)
-        self.sidebar.frame.pack(side=LEFT, fill=Y)
-        print("[main] Sidebar created")
-
-        self.dashboard = Dashboard(master=self.app, config=self.config, notifier=Alerts())
-        print("[main] Dashboard created")
+        # Default view
+        self.sidebar.set_active("overview")
+        self.dashboard.show("overview")
 
         # Start refresh loop
+        self._running = True
         self._schedule_refresh()
 
-        print("[main] Init complete")
+        # Exit cleanly
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    def _load_background(self):
-        bg_path = Path(__file__).parent / "assets" / "bg.png"
-        if bg_path.exists():
-            try:
-                from PIL import Image, ImageTk
-                img = Image.open(bg_path)
-                self.bg_image = ImageTk.PhotoImage(img)
-                label = ttk.Label(self.app, image=self.bg_image)
-                label.place(x=0, y=0, relwidth=1, relheight=1)
-                print(f"[main] Loaded background: {bg_path}")
-            except Exception as e:
-                print(f"[main] bg.png load failed, using fallback: {e}")
+    def _build_layout(self):
+        self.root.grid_columnconfigure(1, weight=1)
+        self.root.grid_rowconfigure(1, weight=1)
+
+        self.topbar = TopBar(self.root, on_toggle_sidebar=self._toggle_sidebar)
+        self.topbar.frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
+
+        self.sidebar = Sidebar(self.root, on_nav=self._on_nav)
+        self.sidebar.frame.grid(row=1, column=0, sticky="nsew")
+
+        self.dashboard = Dashboard(self.root, notify=self._notify)
+        self.dashboard.frame.grid(row=1, column=1, sticky="nsew")
+
+        self._sidebar_visible = True
+
+    def _toggle_sidebar(self):
+        if self._sidebar_visible:
+            self.sidebar.frame.grid_remove()
         else:
-            print("[main] bg.png not found, skipping background.")
+            self.sidebar.frame.grid()
+        self._sidebar_visible = not self._sidebar_visible
 
-    def _on_nav(self, key):
-        if hasattr(self.dashboard, "show"):
-            self.dashboard.show(key, animate=False)
+    def _on_nav(self, key: str):
+        self.sidebar.set_active(key)
+        self.dashboard.show(key)
 
     def _schedule_refresh(self):
+        if not self._running:
+            return
         try:
-            if hasattr(self.dashboard, "refresh"):
-                self.dashboard.refresh()
-        except Exception as e:
-            print("[main] Dashboard refresh failed:")
-            traceback.print_exc()
+            metrics = self.dashboard.refresh()  # returns summary dict
+            self.topbar.update_system(metrics.get("system", {}))
+        except Exception:
+            # Keep the app alive even if a panel had an issue
+            traceback.print_exc(file=sys.stderr)
+        finally:
+            self.root.after(1000, self._schedule_refresh)
 
-        # Schedule again
-        self.app.after(self.config.get("refresh_rate", 1000), self._schedule_refresh)
+    def _notify(self, level: str, message: str):
+        # forward to topbar to flash bell and show toast-like popup
+        self.topbar.alert(level, message)
+
+    def _on_close(self):
+        self._running = False
+        self.root.destroy()
 
     def run(self):
-        print("[main] SpartaMonitorApp constructed, running mainloop...")
-        self.app.mainloop()
-
-    def on_close(self):
-        print("[main] Closing SpartaMonitorApp...")
-        self.app.destroy()
-        sys.exit(0)
+        self.root.mainloop()
 
 
 if __name__ == "__main__":
-    SpartaMonitorApp().run()
+    App().run()

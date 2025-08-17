@@ -1,17 +1,27 @@
-def get_gpu_summary():
-    try:
-        import GPUtil
-        gpus = GPUtil.getGPUs()
-        if not gpus:
-            return "GPU: N/A"
-        g = gpus[0]
-        name = getattr(g, "name", "GPU")
-        load = getattr(g, "load", 0) * 100
-        mem_used = getattr(g, "memoryUsed", 0)
-        mem_total = getattr(g, "memoryTotal", 0)
-        temp = getattr(g, "temperature", None)
-        temp_str = f" | Temp {temp:.0f}°C" if temp is not None else ""
-        return f"GPU: {name} | Load {load:.0f}% | Mem {mem_used:.0f}/{mem_total:.0f} MB{temp_str}"
-    except Exception:
-        # GPUtil not available or no GPU
-        return "GPU: N/A"
+import psutil
+
+def get_disks():
+    disks = []
+    seen = set()
+    for p in psutil.disk_partitions(all=False):
+        # skip duplicates and pseudo filesystems
+        key = (p.device, p.mountpoint)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            usage = psutil.disk_usage(p.mountpoint)
+        except Exception:
+            # some mounts might be inaccessible
+            continue
+        disks.append({
+            "device": p.device,
+            "mount": p.mountpoint,
+            "fstype": p.fstype,
+            "total": usage.total,
+            "used": usage.used,
+            "free": usage.free,
+            "percent": usage.percent,
+        })
+    return disks
+    
