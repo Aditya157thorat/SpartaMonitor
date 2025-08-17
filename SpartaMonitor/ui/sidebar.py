@@ -25,12 +25,24 @@ class Sidebar:
     def _build(self):
         style = ttk.Style()
         try:
+            # Frame style
             style.configure("Sidebar.TFrame", background=COLORS["ink"])
-            style.configure("Sidebar.TButton", background=COLORS["ink"], foreground="#ddd")
-            style.map("Sidebar.TButton", background=[("active", "#1a1a1a")])
             self.frame.configure(style="Sidebar.TFrame")
+
+            # Button style
+            style.configure("Sidebar.TButton",
+                background=COLORS["ink"],
+                foreground=COLORS["text_light"],
+                font=("Segoe UI", 10),
+                padding=6
+            )
+            style.map("Sidebar.TButton",
+                background=[("active", COLORS["hover"]), ("hover", COLORS["hover"])],
+                foreground=[("disabled", COLORS["accent"])]
+            )
         except Exception:
             pass
+
 
         for i, (key, label) in enumerate(NAV_ITEMS):
             btn = ttk.Button(self.frame, text=label, command=lambda k=key: self.on_nav(k))

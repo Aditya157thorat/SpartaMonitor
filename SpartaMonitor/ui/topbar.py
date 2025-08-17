@@ -7,9 +7,10 @@ from utils.theme import COLORS
 
 
 class TopBar:
-    def __init__(self, root, on_toggle_sidebar):
+    def __init__(self, root, on_toggle_sidebar, on_toggle_theme):
         self.root = root
         self.on_toggle_sidebar = on_toggle_sidebar
+        self.on_toggle_theme = on_toggle_theme
 
         self.frame = ttk.Frame(root, padding=(10, 8))
         try:
@@ -22,26 +23,33 @@ class TopBar:
     def _build(self):
         self.frame.grid_columnconfigure(1, weight=1)
 
+        # Sidebar toggle button
         self.toggle = ttk.Button(self.frame, text="☰", width=3, command=self.on_toggle_sidebar)
         self.toggle.grid(row=0, column=0, sticky="w")
 
+        # App title
         self.title = ttk.Label(self.frame, text="SpartaMonitor", font=("Segoe UI", 12, "bold"))
         self.title.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
+        # System info labels
         self.uptime_lbl = ttk.Label(self.frame, text="Uptime: —")
         self.uptime_lbl.grid(row=0, column=2, sticky="e", padx=(0, 10))
 
         self.battery_lbl = ttk.Label(self.frame, text="Battery: —")
         self.battery_lbl.grid(row=0, column=3, sticky="e", padx=(0, 10))
 
+        # Notification bell
         self.bell = ttk.Label(self.frame, text="🔔", foreground="#888")
         self.bell.grid(row=0, column=4, sticky="e")
 
-        # style for topbar if supported
+        self.theme_toggle = ttk.Button(self.frame, text="🌙", width=3, command=self.on_toggle_theme)
+        self.theme_toggle.grid(row=0, column=5, sticky="e", padx=(10, 0))
+
+        # Style configuration
         style = ttk.Style()
         try:
             style.configure("Topbar.TFrame", background=COLORS["bg_dark"])
-            style.configure("Topbar.TLabel", background=COLORS["bg_dark"], foreground="#ddd")
+            style.configure("Topbar.TLabel", background=COLORS["bg_dark"], foreground=COLORS["text_light"])
             self.frame.configure(style="Topbar.TFrame")
             for w in (self.title, self.uptime_lbl, self.battery_lbl, self.bell):
                 w.configure(style="Topbar.TLabel")
@@ -64,7 +72,7 @@ class TopBar:
             self.battery_lbl.config(text="Battery: —")
 
     def alert(self, level: str, message: str):
-        # flash bell and open toast window quickly
+        # Flash bell and show toast
         self._flash_bell()
         self._toast(level.title(), message)
 
@@ -83,7 +91,8 @@ class TopBar:
         top.title(title)
         top.attributes("-topmost", True)
         top.resizable(False, False)
-        # Place near top-right of the root window
+
+        # Position near top-right of root window
         try:
             x = self.root.winfo_x() + self.root.winfo_width() - 320
             y = self.root.winfo_y() + 60

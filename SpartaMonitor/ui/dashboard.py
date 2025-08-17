@@ -11,6 +11,8 @@ from monitor import network as net_mon
 from monitor import gpu as gpu_mon
 from monitor import system as sys_mon
 from utils.formatting import human_bytes, human_rate, format_duration
+from utils.theme import COLORS
+
 
 # Optional Pillow for background image support
 try:
@@ -48,7 +50,15 @@ class Dashboard:
         style.configure("Transparent.TFrame", background="")
 
         # --- Foreground container ---
-        self.container = ttk.Frame(self.frame, style="Transparent.TFrame", padding=10)
+        self.container = tk.Frame(
+            self.frame,
+            bg=COLORS["glass_bg"],
+            highlightbackground=COLORS["border"],
+            highlightthickness=1,
+            bd=0
+        )
+        self.container.place(relx=0.05, rely=0.08, relwidth=0.9, relheight=0.85)
+
       #  self.container.place(relx=0, rely=0, relwidth=1, relheight=1)
 
         # Panels

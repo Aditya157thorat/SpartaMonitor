@@ -36,6 +36,8 @@ class App:
 
         self._build_layout()
 
+        
+
         # Default view
         self.sidebar.set_active("overview")
         self.dashboard.show("overview")
@@ -47,11 +49,41 @@ class App:
         # Exit cleanly
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
+        
+    def _toggle_theme(self):
+            current = self.root.get_appearance_mode()
+            new_mode = "light" if current == "dark" else "dark"
+            self.root.set_appearance_mode(new_mode)
+
+            self._show_popup(f"Switched to {new_mode.capitalize()} Mode")
+
+    def _show_popup(self, message: str):
+        top = tk.Toplevel(self.root)
+        top.overrideredirect(True)
+        top.geometry("300x100+800+600")  # Adjust position as needed
+
+        frm = ttk.Frame(top)
+
+        style = ttk.Style()
+        style.configure("Toast.TFrame", background=COLORS["glass_bg"])
+
+        top.configure(bg=COLORS["glass_bg"])
+        frm.configure(style="Toast.TFrame")
+
+        label = ttk.Label(frm, text=message, foreground=COLORS["text_light"], background=COLORS["glass_bg"])
+        label.pack(padx=10, pady=10)
+
+        frm.pack(padx=20, pady=20)
+
+        top.after(3000, top.destroy)
+   
+
     def _build_layout(self):
         self.root.grid_columnconfigure(1, weight=1)
         self.root.grid_rowconfigure(1, weight=1)
 
-        self.topbar = TopBar(self.root, on_toggle_sidebar=self._toggle_sidebar)
+        self.topbar = TopBar(self.root, on_toggle_sidebar=self._toggle_sidebar, on_toggle_theme=self._toggle_theme)
+
         self.topbar.frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
 
         self.sidebar = Sidebar(self.root, on_nav=self._on_nav)
@@ -59,6 +91,8 @@ class App:
 
         self.dashboard = Dashboard(self.root, notify=self._notify)
         self.dashboard.frame.grid(row=1, column=1, sticky="nsew")
+
+
 
         self._sidebar_visible = True
 
