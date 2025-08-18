@@ -12,49 +12,50 @@ class TopBar:
         self.on_toggle_sidebar = on_toggle_sidebar
         self.on_toggle_theme = on_toggle_theme
 
-        self.frame = ttk.Frame(root, padding=(10, 8))
-        try:
-            self.frame.configure(style="Topbar.TFrame")
-        except Exception:
-            pass
-
+        # Main container uses the Topbar style applied in main.py
+        self.frame = ttk.Frame(root, padding=(10, 8), style="Topbar.TFrame")
         self._build()
 
     def _build(self):
         self.frame.grid_columnconfigure(1, weight=1)
 
-        # Sidebar toggle button
-        self.toggle = ttk.Button(self.frame, text="☰", width=3, command=self.on_toggle_sidebar)
+        # Sidebar toggle button (uses Toolbutton style)
+        self.toggle = ttk.Button(
+            self.frame, text="☰", width=3,
+            command=self.on_toggle_sidebar, style="Toolbutton.TButton"
+        )
         self.toggle.grid(row=0, column=0, sticky="w")
 
         # App title
-        self.title = ttk.Label(self.frame, text="SpartaMonitor", font=("Segoe UI", 12, "bold"))
+        self.title = ttk.Label(
+            self.frame, text="SpartaMonitor", style="Topbar.TLabel"
+        )
         self.title.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
         # System info labels
-        self.uptime_lbl = ttk.Label(self.frame, text="Uptime: —")
+        self.uptime_lbl = ttk.Label(self.frame, text="Uptime: —", style="Topbar.TLabel")
         self.uptime_lbl.grid(row=0, column=2, sticky="e", padx=(0, 10))
 
-        self.battery_lbl = ttk.Label(self.frame, text="Battery: —")
+        self.battery_lbl = ttk.Label(self.frame, text="Battery: —", style="Topbar.TLabel")
         self.battery_lbl.grid(row=0, column=3, sticky="e", padx=(0, 10))
 
         # Notification bell
-        self.bell = ttk.Label(self.frame, text="🔔", foreground="#888")
+        self.bell = ttk.Label(self.frame, text="🔔", style="Topbar.TLabel", foreground="#888")
         self.bell.grid(row=0, column=4, sticky="e")
 
-        self.theme_toggle = ttk.Button(self.frame, text="🌙", width=3, command=self.on_toggle_theme)
+        # Theme toggle button (uses Toolbutton style)
+        self.theme_toggle = ttk.Button(
+            self.frame, text="🌙", width=3,
+            command=self._handle_theme_toggle, style="Toolbutton.TButton"
+        )
         self.theme_toggle.grid(row=0, column=5, sticky="e", padx=(10, 0))
 
-        # Style configuration
-        style = ttk.Style()
-        try:
-            style.configure("Topbar.TFrame", background=COLORS["bg_dark"])
-            style.configure("Topbar.TLabel", background=COLORS["bg_dark"], foreground=COLORS["text_light"])
-            self.frame.configure(style="Topbar.TFrame")
-            for w in (self.title, self.uptime_lbl, self.battery_lbl, self.bell):
-                w.configure(style="Topbar.TLabel")
-        except Exception:
-            pass
+    def _handle_theme_toggle(self):
+        """Call the theme toggle callback and swap icon."""
+        self.on_toggle_theme()
+        # Try flipping icon
+        current = self.theme_toggle.cget("text")
+        self.theme_toggle.config(text="☀" if current == "🌙" else "🌙")
 
     def update_system(self, system_data: dict):
         # Uptime
@@ -83,7 +84,6 @@ class TopBar:
                 return
             self.bell.config(foreground="#e03131" if i % 2 == 0 else "#f0c419")
             self.root.after(200, lambda: step(i + 1))
-
         step(0)
 
     def _toast(self, title, message):
@@ -100,11 +100,13 @@ class TopBar:
         except Exception:
             top.geometry("300x120+80+80")
 
-        frm = ttk.Frame(top, padding=12)
+        frm = ttk.Frame(top, padding=12, style="Toast.TFrame")
         frm.pack(fill="both", expand=True)
 
-        ttk.Label(frm, text=title, font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        ttk.Label(frm, text=message, wraplength=260).pack(anchor="w", pady=(6, 10))
-        ttk.Button(frm, text="Dismiss", command=top.destroy).pack(anchor="e")
+        ttk.Label(frm, text=title, style="Toast.TLabel").pack(anchor="w")
+        ttk.Label(frm, text=message, style="Toast.TLabel", wraplength=260)\
+            .pack(anchor="w", pady=(6, 10))
+        ttk.Button(frm, text="Dismiss", style="Accent.TButton", command=top.destroy)\
+            .pack(anchor="e")
 
         top.after(5000, lambda: (top.winfo_exists() and top.destroy()))
