@@ -1,112 +1,67 @@
-import time
-import tkinter as tk
-from tkinter import ttk
+import customtkinter as ctk
+import psutil, time, threading, datetime
 
-from utils.formatting import format_duration
-from utils.theme import COLORS
+class TopBarFrame(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        self.configure(fg_color="#1a1a1a")  # dark glass effect
 
+        # Title
+        self.label = ctk.CTkLabel(self, text="⚔️ Sparta Monitor",
+                                  font=("Segoe UI", 24, "bold"),
+                                  fg_color="transparent", text_color="white")
+        self.label.pack(side="left", padx=20, pady=10)
 
-class TopBar:
-    def __init__(self, root, on_toggle_sidebar, on_toggle_theme):
-        self.root = root
-        self.on_toggle_sidebar = on_toggle_sidebar
-        self.on_toggle_theme = on_toggle_theme
+        # Right cluster (battery, clock, info)
+        right = ctk.CTkFrame(self, fg_color="transparent")
+        right.pack(side="right", padx=10)
 
-        # Main container uses the Topbar style applied in main.py
-        self.frame = ttk.Frame(root, padding=(10, 8), style="Topbar.TFrame")
-        self._build()
+        self.battery_label = ctk.CTkLabel(right, text="", font=("Segoe UI", 16),
+                                          fg_color="transparent", text_color="lightgray")
+        self.battery_label.pack(side="right", padx=10)
 
-    def _build(self):
-        self.frame.grid_columnconfigure(1, weight=1)
+        self.clock_label = ctk.CTkLabel(right, text="🕒 --:--", font=("Segoe UI", 16),
+                                        fg_color="transparent", text_color="lightgray")
+        self.clock_label.pack(side="right", padx=10)
 
-        # Sidebar toggle button (uses Toolbutton style)
-        self.toggle = ttk.Button(
-            self.frame, text="☰", width=3,
-            command=self.on_toggle_sidebar, style="Toolbutton.TButton"
-        )
-        self.toggle.grid(row=0, column=0, sticky="w")
+        self.info_label = ctk.CTkLabel(right, text="Loading...", font=("Segoe UI", 16),
+                                       fg_color="transparent", text_color="white")
+        self.info_label.pack(side="right", padx=10)
 
-        # App title
-        self.title = ttk.Label(
-            self.frame, text="SpartaMonitor", style="Topbar.TLabel"
-        )
-        self.title.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        self.old_values = {"cpu": 0, "mem": 0}
+        threading.Thread(target=self._update_loop, daemon=True).start()
 
-        # System info labels
-        self.uptime_lbl = ttk.Label(self.frame, text="Uptime: —", style="Topbar.TLabel")
-        self.uptime_lbl.grid(row=0, column=2, sticky="e", padx=(0, 10))
+    def _flash_label(self, label: ctk.CTkLabel, color: str, ms: int = 300):
+        orig = label.cget("text_color")
+        label.configure(text_color=color)
+        self.after(ms, lambda: label.configure(text_color=orig))
 
-        self.battery_lbl = ttk.Label(self.frame, text="Battery: —", style="Topbar.TLabel")
-        self.battery_lbl.grid(row=0, column=3, sticky="e", padx=(0, 10))
+    def _update_loop(self):
+        while True:
+            cpu = psutil.cpu_percent(interval=1)
+            mem = psutil.virtual_memory().percent
+            uptime = time.strftime("%H:%M:%S", time.gmtime(time.time() - psutil.boot_time()))
+            self.info_label.configure(text=f"🖥️ {cpu}% | 💾 {mem}% | ⏱️ {uptime}")
 
-        # Notification bell
-        self.bell = ttk.Label(self.frame, text="🔔", style="Topbar.TLabel", foreground="#888")
-        self.bell.grid(row=0, column=4, sticky="e")
+            now = datetime.datetime.now().strftime("%H:%M:%S")
+            self.clock_label.configure(text=f"🕒 {now}")
 
-        # Theme toggle button (uses Toolbutton style)
-        self.theme_toggle = ttk.Button(
-            self.frame, text="🌙", width=3,
-            command=self._handle_theme_toggle, style="Toolbutton.TButton"
-        )
-        self.theme_toggle.grid(row=0, column=5, sticky="e", padx=(10, 0))
+            try:
+                battery = psutil.sensors_battery()
+                if battery:
+                    percent = battery.percent
+                    plugged = " 🔌" if battery.power_plugged else ""
+                    self.battery_label.configure(text=f"🔋 {percent:.0f}%{plugged}")
+                    if percent < 20 and not battery.power_plugged:
+                        self._flash_label(self.battery_label, "red")
+                else:
+                    self.battery_label.configure(text="")
+            except Exception:
+                self.battery_label.configure(text="")
 
-    def _handle_theme_toggle(self):
-        """Call the theme toggle callback and swap icon."""
-        self.on_toggle_theme()
-        # Try flipping icon
-        current = self.theme_toggle.cget("text")
-        self.theme_toggle.config(text="☀" if current == "🌙" else "🌙")
-
-    def update_system(self, system_data: dict):
-        # Uptime
-        uptime_s = system_data.get("uptime_seconds")
-        if uptime_s is not None:
-            self.uptime_lbl.config(text=f"Uptime: {format_duration(uptime_s)}")
-
-        # Battery
-        batt = system_data.get("battery")
-        if batt and batt.get("percent") is not None:
-            pct = int(batt["percent"])
-            ac = "⚡" if batt.get("plugged") else ""
-            self.battery_lbl.config(text=f"Battery: {pct}% {ac}")
-        else:
-            self.battery_lbl.config(text="Battery: —")
-
-    def alert(self, level: str, message: str):
-        # Flash bell and show toast
-        self._flash_bell()
-        self._toast(level.title(), message)
-
-    def _flash_bell(self):
-        def step(i=0):
-            if i >= 6:
-                self.bell.config(foreground="#888")
-                return
-            self.bell.config(foreground="#e03131" if i % 2 == 0 else "#f0c419")
-            self.root.after(200, lambda: step(i + 1))
-        step(0)
-
-    def _toast(self, title, message):
-        top = tk.Toplevel(self.root)
-        top.title(title)
-        top.attributes("-topmost", True)
-        top.resizable(False, False)
-
-        # Position near top-right of root window
-        try:
-            x = self.root.winfo_x() + self.root.winfo_width() - 320
-            y = self.root.winfo_y() + 60
-            top.geometry(f"300x120+{x}+{y}")
-        except Exception:
-            top.geometry("300x120+80+80")
-
-        frm = ttk.Frame(top, padding=12, style="Toast.TFrame")
-        frm.pack(fill="both", expand=True)
-
-        ttk.Label(frm, text=title, style="Toast.TLabel").pack(anchor="w")
-        ttk.Label(frm, text=message, style="Toast.TLabel", wraplength=260)\
-            .pack(anchor="w", pady=(6, 10))
-        ttk.Button(frm, text="Dismiss", style="Accent.TButton", command=top.destroy)\
-            .pack(anchor="e")
-
-        top.after(5000, lambda: (top.winfo_exists() and top.destroy()))
+            # Flash on spikes
+            diffs = {"cpu": cpu - self.old_values["cpu"], "mem": mem - self.old_values["mem"]}
+            for k, d in diffs.items():
+                if abs(d) > 10:
+                    self._flash_label(self.info_label, "red" if d > 0 else "green")
+            self.old_values["cpu"], self.old_values["mem"] = cpu, mem

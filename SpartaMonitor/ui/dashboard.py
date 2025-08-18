@@ -1,302 +1,125 @@
-import time
-import tkinter as tk
-from tkinter import ttk
-from pathlib import Path
+import customtkinter as ctk
+from PIL import Image
+import psutil, threading, time
 
-from alerts import Alerts
-from monitor import cpu as cpu_mon
-from monitor import memory as mem_mon
-from monitor import disk as disk_mon
-from monitor import network as net_mon
-from monitor import gpu as gpu_mon
-from monitor import system as sys_mon
-from utils.formatting import human_bytes, human_rate, format_duration
-from utils.theme import COLORS
-
-
-# Optional Pillow for background image support
 try:
-    from PIL import Image, ImageTk, ImageEnhance, ImageFilter
-    PIL_OK = True
-except Exception:
-    PIL_OK = False
+    import GPUtil
+    HAS_GPU = True
+except ImportError:
+    HAS_GPU = False
 
 
-class Dashboard:
-    def __init__(self, root, notify):
-        self.root = root
-        self.frame = tk.Frame(root, bg="black")  # Use tk.Frame for layering
-        self.frame.grid(row=0, column=0, sticky="nsew")
+class DashboardFrame(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
 
-        # --- Background ---
-        self.bg_label = None
-        if PIL_OK:
-            bg_path = Path("assets/bacg.png")
-            print(f"[Dashboard] Looking for background at: {bg_path.resolve()}")
-
-            if bg_path.exists():
-                try:
-                    img = Image.open(bg_path)
-                    self.bg_img = ImageTk.PhotoImage(img)
-                    self.bg_label = tk.Label(self.frame, image=self.bg_img, borderwidth=0)
-                    self.bg_label.place(relx=0, rely=0, relwidth=1, relheight=1)
-                    self.frame.bind("<Configure>", self._resize_bg)
-                    self._bg_path = bg_path
-                except Exception as e:
-                    print(f"[Dashboard] Could not load background: {e}")
-
-        # --- Transparent Style ---
-        style = ttk.Style()
-        style.configure("Transparent.TFrame", background="")
-
-        # --- Foreground container ---
-        self.container = tk.Frame(
-            self.frame,
-            bg=COLORS["glass_bg"],
-            highlightbackground=COLORS["border"],
-            highlightthickness=1,
-            bd=0
+        # ✅ Background image stretched properly
+        self.bg_image = ctk.CTkImage(
+            light_image=Image.open("assets/bacg.png"),
+            dark_image=Image.open("assets/bacg.png"),
+            size=(1600, 900)  # cover large screens
         )
-        self.container.place(relx=0.05, rely=0.08, relwidth=0.9, relheight=0.85)
+        self.bg_label = ctk.CTkLabel(self, image=self.bg_image, text="")
+        self.bg_label.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.bg_label.lower()  # background always behind
 
-      #  self.container.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # ✅ Dashboard title
+        self.title_label = ctk.CTkLabel(
+            self,
+            text="📊 System Overview",
+            font=("Segoe UI", 26, "bold"),
+            text_color="white"
+        )
+        self.title_label.pack(pady=20)
+        self.title_label.lift()
 
-        # Panels
-        self.panels = {
-            "overview": OverviewPanel(self.container),
-            "cpu": CPUPanel(self.container),
-            "memory": MemoryPanel(self.container),
-            "disk": DiskPanel(self.container),
-            "network": NetworkPanel(self.container),
-            "gpu": GPUPanel(self.container),
-        }
-        self.current_key = None
-        self.alerts = Alerts(root, callback=notify)
+        # ✅ Cards container
+        self.cards_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.cards_frame.pack(pady=20, padx=20, fill="both", expand=True)
+        self.cards_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
-    def _resize_bg(self, event):
-        if not (PIL_OK and hasattr(self, "_bg_path")):
-            return
-        try:
-            img = Image.open(self._bg_path)
-            img = img.resize((event.width, event.height), Image.LANCZOS)
-            self.bg_img = ImageTk.PhotoImage(img)
-            self.bg_label.configure(image=self.bg_img)
-        except Exception as e:
-            print(f"[Dashboard] Background resize failed: {e}")
+        # Info cards
+        self.cpu_label = self.create_card("🖥 CPU", "Loading...", 0, 0)
+        self.mem_label = self.create_card("💾 Memory", "Loading...", 0, 1)
+        self.disk_label = self.create_card("💽 Disk", "Loading...", 0, 2)
+        self.net_label = self.create_card("🌐 Network", "Loading...", 1, 0)
+        self.gpu_label = self.create_card("🎮 GPU", "Loading...", 1, 1)
+        self.temp_label = self.create_card("🌡 CPU Temp", "Loading...", 1, 2)
 
+        # ✅ Start background thread for stats
+        threading.Thread(target=self.update_stats, daemon=True).start()
 
-    def show(self, key: str):
-        if self.current_key == key:
-            return
-        for child in self.container.winfo_children():
-            child.pack_forget()
-        panel = self.panels.get(key)
-        if panel:
-            panel.frame.pack(fill="both", expand=True)
-            self.current_key = key
+    def create_card(self, title, value, row, col):
+        """Reusable system info card with glassy effect"""
+        frame = ctk.CTkFrame(
+            self.cards_frame,
+            corner_radius=15,
+            fg_color="#1a1a1a"  # semi-dark glass illusion
+        )
+        frame.grid(row=row, column=col, padx=20, pady=20, sticky="nsew")
 
-    def refresh(self):
-        if self.current_key:
-            self.panels[self.current_key].refresh()
+        title_label = ctk.CTkLabel(
+            frame,
+            text=title,
+            font=("Segoe UI", 18, "bold"),
+            text_color="lightgray"
+        )
+        title_label.pack(pady=(15, 5))
 
-        snapshot = {
-            "cpu": cpu_mon.get_overview(),
-            "memory": mem_mon.get_overview(),
-            "disks": disk_mon.get_disks(),
-            "network": net_mon.get_overview(),
-            "gpus": gpu_mon.get_gpus(),
-            "system": sys_mon.get_overview(),
-        }
+        value_label = ctk.CTkLabel(
+            frame,
+            text=value,
+            font=("Segoe UI", 22),
+            text_color="white"
+        )
+        value_label.pack(pady=(0, 15))
 
-        if "network" in self.panels:
-            self.panels["network"].ingest_counters(snapshot["network"])
+        frame.lift()
+        return value_label
 
-        self.panels["overview"].update_from(snapshot)
-        self.alerts.check(snapshot)
-        return snapshot
+    def update_stats(self):
+        old_sent = psutil.net_io_counters().bytes_sent
+        old_recv = psutil.net_io_counters().bytes_recv
 
+        while True:
+            # CPU, RAM, Disk
+            cpu = psutil.cpu_percent(interval=1)
+            mem = psutil.virtual_memory().percent
+            disk = psutil.disk_usage("/").percent
 
-# ------------------------
-# Panel Implementations
-# ------------------------
+            # Network
+            new_sent = psutil.net_io_counters().bytes_sent
+            new_recv = psutil.net_io_counters().bytes_recv
+            up_speed = (new_sent - old_sent) / 1024
+            down_speed = (new_recv - old_recv) / 1024
+            old_sent, old_recv = new_sent, new_recv
 
-class OverviewPanel:
-    def __init__(self, parent):
-        self.frame = ttk.Frame(parent)
-        self.cpu = ttk.Label(self.frame, text="CPU: —")
-        self.mem = ttk.Label(self.frame, text="Memory: —")
-        self.disk = ttk.Label(self.frame, text="Disk: —")
-        self.net = ttk.Label(self.frame, text="Network: —")
-        self.gpu = ttk.Label(self.frame, text="GPU: —")
-        self.sys = ttk.Label(self.frame, text="Uptime: —")
-        for w in (self.cpu, self.mem, self.disk, self.net, self.gpu, self.sys):
-            w.pack(anchor="w", pady=4)
+            # GPU
+            gpu = 0
+            if HAS_GPU:
+                try:
+                    gpus = GPUtil.getGPUs()
+                    gpu = gpus[0].load * 100 if gpus else 0
+                except Exception:
+                    gpu = 0
 
-    def update_from(self, snap: dict):
-        c = snap["cpu"]
-        self.cpu.config(text=f"CPU: {c.get('percent', 0):.0f}% @ {c.get('freq_mhz', 0):.0f} MHz ({c.get('cores_logical', '?')} cores)")
-        m = snap["memory"]
-        self.mem.config(text=f"Memory: {m.get('percent', 0):.0f}% {human_bytes(m.get('used', 0))}/{human_bytes(m.get('total', 0))}")
-        d = snap["disks"]
-        if d:
-            worst = max(d, key=lambda x: x.get("percent", 0))
-            self.disk.config(text=f"Disk: {worst.get('mount')} {worst.get('percent', 0):.0f}% used ({human_bytes(worst.get('used', 0))}/{human_bytes(worst.get('total', 0))})")
-        else:
-            self.disk.config(text="Disk: —")
-        n = snap["network"]
-        self.net.config(text=f"Network: Up {human_rate(n.get('tx_rate_bps', 0))} | Down {human_rate(n.get('rx_rate_bps', 0))}")
-        g_list = snap["gpus"]
-        if g_list:
-            g = max(g_list, key=lambda x: x.get("load_percent", 0))
-            self.gpu.config(text=f"GPU: {g.get('name','GPU')} {g.get('load_percent',0):.0f}% Mem {g.get('mem_used_mb',0)}/{g.get('mem_total_mb',0)} MB")
-        else:
-            self.gpu.config(text="GPU: —")
-        s = snap["system"]
-        self.sys.config(text=f"Uptime: {format_duration(s.get('uptime_seconds', 0))}")
+            # CPU Temp
+            temp = "N/A"
+            try:
+                temps = psutil.sensors_temperatures()
+                if "coretemp" in temps:
+                    temp = f"{temps['coretemp'][0].current:.1f}°C"
+                elif temps:
+                    first = list(temps.values())[0]
+                    if first:
+                        temp = f"{first[0].current:.1f}°C"
+            except Exception:
+                temp = "N/A"
 
-    def refresh(self):
-        pass
-
-
-class CPUPanel:
-    def __init__(self, parent):
-        self.frame = ttk.Frame(parent)
-        ttk.Label(self.frame, text="CPU Usage", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
-        self.overview = ttk.Label(self.frame, text="—")
-        self.overview.pack(anchor="w", pady=(0, 10))
-        self.core_frame = ttk.Frame(self.frame)
-        self.core_frame.pack(fill="x")
-        self.bars = []
-
-    def refresh(self):
-        data = cpu_mon.get_overview()
-        self.overview.config(text=f"{data['percent']:.0f}% @ {data.get('freq_mhz',0):.0f} MHz | Temps: {data.get('temp_c','—')}°C")
-        cores = data.get("per_core", [])
-        if len(self.bars) != len(cores):
-            for w in self.core_frame.winfo_children():
-                w.destroy()
-            self.bars = []
-            for i, _ in enumerate(cores):
-                row = ttk.Frame(self.core_frame)
-                row.pack(fill="x", pady=2)
-                ttk.Label(row, text=f"Core {i}").pack(side="left", padx=(0, 8))
-                bar = ttk.Progressbar(row, length=400, maximum=100)
-                bar.pack(side="left", fill="x", expand=True)
-                val = ttk.Label(row, text="0%")
-                val.pack(side="left", padx=8)
-                self.bars.append((bar, val))
-        for (bar, val), p in zip(self.bars, cores):
-            bar["value"] = p
-            val.config(text=f"{p:.0f}%")
-
-
-class MemoryPanel:
-    def __init__(self, parent):
-        self.frame = ttk.Frame(parent)
-        ttk.Label(self.frame, text="Memory", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
-        self.total = ttk.Label(self.frame, text="—")
-        self.used = ttk.Label(self.frame, text="—")
-        self.swap = ttk.Label(self.frame, text="—")
-        self.total.pack(anchor="w", pady=4)
-        self.used.pack(anchor="w", pady=4)
-        ttk.Separator(self.frame, orient="horizontal").pack(fill="x", pady=8)
-        ttk.Label(self.frame, text="Swap", font=("Segoe UI", 11, "bold")).pack(anchor="w")
-        self.swap.pack(anchor="w", pady=4)
-
-    def refresh(self):
-        m = mem_mon.get_overview()
-        self.total.config(text=f"Total: {human_bytes(m['total'])}")
-        self.used.config(text=f"Used: {human_bytes(m['used'])} ({m['percent']:.0f}%)")
-        s = m.get("swap", {})
-        self.swap.config(text=f"Swap: {human_bytes(s.get('used', 0))}/{human_bytes(s.get('total', 0))} ({s.get('percent', 0):.0f}%)")
-class DiskPanel:
-    def __init__(self, parent):
-        self.frame = ttk.Frame(parent)
-        ttk.Label(self.frame, text="Disks", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
-        cols = ("Mount", "FS", "Used", "Total", "Usage")
-        self.tree = ttk.Treeview(self.frame, columns=cols, show="headings", height=12)
-        for c in cols:
-            self.tree.heading(c, text=c)
-            self.tree.column(c, width=120, anchor="w")
-        self.tree.pack(fill="both", expand=True)
-
-    def refresh(self):
-        disks = disk_mon.get_disks()
-        for i in self.tree.get_children():
-            self.tree.delete(i)
-        for d in disks:
-            self.tree.insert("", "end", values=(
-                d.get("mount"), d.get("fstype"),
-                human_bytes(d.get("used", 0)),
-                human_bytes(d.get("total", 0)),
-                f"{d.get('percent', 0):.0f}%"
-            ))
-class NetworkPanel:
-    def __init__(self, parent):
-        self.frame = ttk.Frame(parent)
-        ttk.Label(self.frame, text="Network", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
-        self.up = ttk.Label(self.frame, text="Up: —")
-        self.down = ttk.Label(self.frame, text="Down: —")
-        self.up.pack(anchor="w", pady=3)
-        self.down.pack(anchor="w", pady=3)
-
-        cols = ("Interface", "IPv4", "IPv6", "Sent", "Recv")
-        self.tree = ttk.Treeview(self.frame, columns=cols, show="headings", height=10)
-        for c in cols:
-            self.tree.heading(c, text=c)
-            self.tree.column(c, width=140, anchor="w")
-        self.tree.pack(fill="both", expand=True, pady=(6, 0))
-
-        self._last = None
-
-    def ingest_counters(self, net_overview: dict):
-        self._last = net_overview
-
-    def refresh(self):
-        now = net_mon.get_overview()
-        up_bps = now.get("tx_rate_bps", 0)
-        down_bps = now.get("rx_rate_bps", 0)
-        self.up.config(text=f"Up: {human_rate(up_bps)}")
-        self.down.config(text=f"Down: {human_rate(down_bps)}")
-
-        info = net_mon.get_interfaces()
-        for i in self.tree.get_children():
-            self.tree.delete(i)
-        for name, data in info.items():
-            self.tree.insert("", "end", values=(
-                name,
-                ", ".join(data.get("ipv4", [])) or "—",
-                ", ".join(data.get("ipv6", [])) or "—",
-                human_bytes(data.get("bytes_sent", 0)),
-                human_bytes(data.get("bytes_recv", 0)),
-            ))
-class GPUPanel:
-    def __init__(self, parent):
-        self.frame = ttk.Frame(parent)
-        ttk.Label(self.frame, text="GPU", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
-        cols = ("Name", "Load", "Mem", "Temp")
-        self.tree = ttk.Treeview(self.frame, columns=cols, show="headings", height=10)
-        for c in cols:
-            self.tree.heading(c, text=c)
-            self.tree.column(c, width=160, anchor="w")
-        self.tree.pack(fill="both", expand=True)
-        self.note = ttk.Label(self.frame, text="No GPU info available.")
-        self.note.pack(anchor="w", pady=6)
-
-    def refresh(self):
-        gpus = gpu_mon.get_gpus()
-        for i in self.tree.get_children():
-            self.tree.delete(i)
-
-        if not gpus:
-            self.note.config(text="No GPU info available or GPUtil not installed.")
-            return
-
-        self.note.config(text="")
-        for g in gpus:
-            self.tree.insert("", "end", values=(
-                g.get("name", "GPU"),
-                f"{g.get('load_percent', 0):.0f}%",
-                f"{g.get('mem_used_mb', 0)}/{g.get('mem_total_mb', 0)} MB",
-                f"{g.get('temp_c', '—')}°C",
-            ))
+            # Update UI
+            self.cpu_label.configure(text=f"{cpu}%")
+            self.mem_label.configure(text=f"{mem}%")
+            self.disk_label.configure(text=f"{disk}%")
+            self.net_label.configure(text=f"⬆ {up_speed:.1f} KB/s | ⬇ {down_speed:.1f} KB/s")
+            self.gpu_label.configure(text=f"{gpu:.1f}%")
+            self.temp_label.configure(text=temp)
