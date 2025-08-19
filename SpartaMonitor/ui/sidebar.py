@@ -1,29 +1,18 @@
 import customtkinter as ctk
-from PIL import Image
 
 class Sidebar(ctk.CTkFrame):
     def __init__(self, master, controller, **kwargs):
         super().__init__(master, **kwargs)
         self.controller = controller
-        self.configure(fg_color="transparent")
+        self.configure(fg_color="#111111")  # solid dark background instead of image
         self.buttons = {}
-
-        # ✅ Background image
-        self.bg_image = ctk.CTkImage(
-            light_image=Image.open("assets/bacg.png"),
-            dark_image=Image.open("assets/bacg.png"),
-            size=(300, 900)  # adjust sidebar size, not full 1600px
-        )
-        self.bg_label = ctk.CTkLabel(self, image=self.bg_image, text="")
-        self.bg_label.place(relx=0, rely=0, relwidth=1, relheight=1)
-        self.bg_label.lower()  # send behind widgets
 
         # ✅ Button style
         btn_style = {
             "font": ("Segoe UI", 18, "bold"),
             "height": 44,
             "corner_radius": 10,
-            "fg_color": "#1a1a1a",   # dark glass effect
+            "fg_color": "#1a1a1a",   # dark button look
             "hover_color": ("#3B82F6", "#3B82F6"),
             "anchor": "w",
             "text_color": ("#EAEAEA", "#EAEAEA"),
@@ -46,7 +35,6 @@ class Sidebar(ctk.CTkFrame):
                 **btn_style
             )
             btn.pack(padx=12, pady=8, fill="x")
-            btn.lift()  # ✅ force above background
             self.buttons[key] = btn
 
         # ✅ Footer
@@ -57,7 +45,6 @@ class Sidebar(ctk.CTkFrame):
             fg_color="transparent"
         )
         self.footer.pack(side="bottom", pady=12)
-        self.footer.lift()  # ✅ keep above background
 
         self.active_key = None
 

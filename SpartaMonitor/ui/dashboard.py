@@ -1,5 +1,4 @@
 import customtkinter as ctk
-from PIL import Image
 import psutil, threading, time
 
 try:
@@ -13,15 +12,8 @@ class DashboardFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
 
-        # ✅ Background image stretched properly
-        self.bg_image = ctk.CTkImage(
-            light_image=Image.open("assets/bacg.png"),
-            dark_image=Image.open("assets/bacg.png"),
-            size=(1600, 900)  # cover large screens
-        )
-        self.bg_label = ctk.CTkLabel(self, image=self.bg_image, text="")
-        self.bg_label.place(relx=0, rely=0, relwidth=1, relheight=1)
-        self.bg_label.lower()  # background always behind
+        # ✅ Solid background (instead of image)
+        self.configure(fg_color="#111111")  
 
         # ✅ Dashboard title
         self.title_label = ctk.CTkLabel(
@@ -31,7 +23,6 @@ class DashboardFrame(ctk.CTkFrame):
             text_color="white"
         )
         self.title_label.pack(pady=20)
-        self.title_label.lift()
 
         # ✅ Cards container
         self.cards_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -54,7 +45,7 @@ class DashboardFrame(ctk.CTkFrame):
         frame = ctk.CTkFrame(
             self.cards_frame,
             corner_radius=15,
-            fg_color="#1a1a1a"  # semi-dark glass illusion
+            fg_color="#1a1a1a"  # semi-dark card
         )
         frame.grid(row=row, column=col, padx=20, pady=20, sticky="nsew")
 
@@ -74,7 +65,6 @@ class DashboardFrame(ctk.CTkFrame):
         )
         value_label.pack(pady=(0, 15))
 
-        frame.lift()
         return value_label
 
     def update_stats(self):

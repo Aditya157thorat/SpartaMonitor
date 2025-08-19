@@ -1,5 +1,4 @@
 import customtkinter as ctk
-from PIL import Image
 
 # Existing UI
 from ui.sidebar import Sidebar
@@ -22,15 +21,7 @@ class SpartaMonitorApp(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
-        # ✅ Background image (covers whole window)
-        self.bg_image = ctk.CTkImage(
-            light_image=Image.open("assets/bacg.png"),
-            dark_image=Image.open("assets/bacg.png"),
-            size=(1600, 900)  # make sure this is >= your window size
-        )
-        self.bg_label = ctk.CTkLabel(self, image=self.bg_image, text="")
-        self.bg_label.place(relx=0, rely=0, relwidth=1, relheight=1)
-        self.bg_label.lower()  # always behind everything
+        # ❌ Removed background image
 
         # Layout config
         self.grid_rowconfigure(1, weight=1)
